@@ -79,5 +79,4 @@ python main.py -p "pattern1" "replacement1" "pattern2" "replacement2"
 
 ## License
 
-MIT (or insert your preferred license here)
-
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
