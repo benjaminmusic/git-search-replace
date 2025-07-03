@@ -1,0 +1,34 @@
+[
+  {
+    "fileType": "*.json",
+    "option": "include"
+  },
+  {
+    "fileType": "*.yml",
+    "option": "include"
+  },
+  {
+    "fileType": "*.cs",
+    "option": "include"
+  },
+  {
+    "fileType": "*.ps1",
+    "option": "include"
+  },
+  {
+    "fileType": "*.md",
+    "option": "include"
+  },
+  {
+    "fileType": "*.sh",
+    "option": "include"
+  },
+  {
+    "fileType": "*.config",
+    "option": "include"
+  },
+  {
+    "fileType": "*.csproj",
+    "option": "include"
+  }
+]

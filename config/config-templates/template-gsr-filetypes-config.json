@@ -1,0 +1,10 @@
+[
+  {
+    "fileType": "*.fileExtension1",
+    "option": "include"
+  },
+  {
+    "fileType": "*.fileExtension2",
+    "option": "exclude"
+  }
+]
