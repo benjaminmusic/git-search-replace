@@ -1,0 +1,22 @@
+[
+  {
+    "OldString": "Old0",
+    "NewString": "New0",
+    "Match": "Full"
+  },
+  {
+    "OldString": "Old1",
+    "NewString": "New1",
+    "Match": "Left"
+  },
+  {
+    "OldString": "Old2",
+    "NewString": "New2",
+    "Match": "Right"
+  },
+  {
+    "OldString": "Old3",
+    "NewString": "New3",
+    "Match": "None"
+  }
+]
