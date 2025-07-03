@@ -1,0 +1,8 @@
+[
+  {
+    "fileType": "*.fileExtension1"
+  },
+  {
+    "fileType": "*.fileExtension2"
+  }
+]
