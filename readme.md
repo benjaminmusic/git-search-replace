@@ -80,3 +80,8 @@ python main.py -p "pattern1" "replacement1" "pattern2" "replacement2"
 ## License
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+
+## Credits
+
+This project is based on [`git-search-replace`](https://github.com/da-x/git-search-replace) by [da-x](https://github.com/da-x). Significant modifications and enhancements were made for custom use cases.
+
