@@ -452,7 +452,6 @@ def main():
         default="config/gsr-filetypes-config.json",
         help="Path to filetypes config file (default: config/gsr-filetypes-config.json)")
 
-
     (options, args) = parser.parse_args()
 
     filters = getattr(options, 'filters', [])
