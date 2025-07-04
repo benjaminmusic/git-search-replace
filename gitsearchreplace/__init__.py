@@ -17,15 +17,16 @@ SEARCH_JSON_FILENAME = "search_matches.json"
 MATCHES_JSON_FILENAME = "matches.json"
 RESULTS_FOLDER_NAME = "search-results"
 
-def update_search_json(filename, match_entries, repo_root_folder):
+def update_search_json(filename, match_entries, repo_root_folder, branch):
     data = load_json_list(filename)
 
     # Try to find existing entry for this repo
-    existing = next((d for d in data if d.get("repository-branch") == repo_root_folder), None)
+    existing = next((d for d in data if d.get("repository") == repo_root_folder and d.get("branch") == branch), None)
 
     if not existing:
         existing = {
-            "repository-branch": repo_root_folder,
+            "repository": repo_root_folder,
+            "branch": branch,
             "changes": []
         }
         data.append(existing)
@@ -93,7 +94,6 @@ class GitSearchReplace(object):
         self.expressions_str = expressions
         self.expressions = []
         self.stage = None
-        self._unique_matches_set = set()
         self.search_json_filename = self.get_timestamped_filename(SEARCH_JSON_FILENAME)
         self.matches_json_filename = self.get_timestamped_filename(MATCHES_JSON_FILENAME)
         results_dir = os.path.join(self.get_parent_of_git_root(), RESULTS_FOLDER_NAME)
@@ -168,6 +168,12 @@ class GitSearchReplace(object):
             git_root_bytes = run_subprocess(["git", "rev-parse", "--show-toplevel"])
             self._git_root = git_root_bytes.decode('utf-8').strip()
         return self._git_root
+    
+    def get_git_branch(self):
+        if not hasattr(self, '_git_branch'):
+            branch_bytes = run_subprocess(["git", "rev-parse", "--abbrev-ref", "HEAD"])
+            self._git_branch = branch_bytes.decode("utf-8").strip()
+        return self._git_branch
 
     def get_git_root_relative(self, filename):
         git_root = self.get_git_root()
@@ -189,11 +195,14 @@ class GitSearchReplace(object):
             excluded = False
             for (mode, pattern) in self.filters:
                 if fnmatch.fnmatch(filename, pattern):
-                    excluded = mode == 'exclude'
-                    continue
+                    if mode == 'exclude':
+                        excluded = True
+                    elif mode == 'include':
+                        excluded = False
             if excluded:
                 continue
             filtered_filenames.append(filename)
+
 
         for filename in filtered_filenames:
             if not os.path.isfile(filename):
@@ -211,11 +220,14 @@ class GitSearchReplace(object):
 
 
             if self.diff or self.fix:
+                print(f"\n=== Beginning search and replace in repository ===\n")
                 self.show_file(filename, filedata, original_bytes, original_encoding)
             else:
+                print(f"\n=== Beginning search in repository ===\n")
                 self.show_lines_grep_like(filename, filedata)
 
-        print(f"\n=== Total matches found across all files: {self.total_matches_found} ===")
+        print(f"=== Finished ===")
+        print(f"\n=== Total matches found across all files: {self.total_matches_found} ===\n")
 
         if self.renames:
             for filename in filtered_filenames:
@@ -251,7 +263,7 @@ class GitSearchReplace(object):
 
         for match in matches:
             line_nr = bisect.bisect(line_starts, match.start())
-            matches_lines.append(f"{rel_filename}:{line_nr}:_{lines[line_nr - 1]}")
+            matches_lines.append(f"{rel_filename}:{line_nr + 1}:_{lines[line_nr - 1]}")
 
         matches_lines.sort()
         for line in matches_lines:
@@ -271,27 +283,27 @@ class GitSearchReplace(object):
 
             print(f"--- Matches BEFORE change in {rel_filename} ---")
             for expr in self.expressions:
-                lines_before = filedata.splitlines()
-                lines_after = new_filedata.splitlines()
+                lines_before = filedata.splitlines(keepends=True)
+                lines_after = new_filedata.splitlines(keepends=True)
                 line_starts = []
                 pos = 0
                 for line in lines_before:
                     line_starts.append(pos)
-                    pos += len(line) + 1
+                    pos += len(line)
 
                 matches = list(expr.fromexpr.finditer(filedata))
                 for match in matches:
-                    line_nr = bisect.bisect(line_starts, match.start())
-                    old_line = lines_before[line_nr - 1]
-                    new_line = lines_after[line_nr - 1]
+                    line_nr = max(0, bisect.bisect_right(line_starts, match.start()) - 1)
+                    old_line = lines_before[line_nr]
+                    new_line = lines_after[line_nr]
 
-                    replaced_substr = old_line[match.start() - line_starts[line_nr - 1]:match.end() - line_starts[line_nr - 1]]
+                    replaced_substr = match.group()
                     replacement_substr = expr.toexpr
 
-                    print(f"{rel_filename}:{line_nr}:_{old_line}")
+                    print(f"{rel_filename}:{line_nr + 1}:_{old_line.rstrip()}")
                     match_entries.append({
                         "filename": rel_filename,
-                        "line": line_nr,
+                        "line": line_nr + 1,
                         "before": old_line,
                         "after": new_line,
                         "changed_text": {
@@ -300,30 +312,24 @@ class GitSearchReplace(object):
                         }
                     })
 
-
-            new_count = 0
-            for entry in match_entries:
-                key = json.dumps(entry, sort_keys=True)
-                if key not in self._unique_matches_set:
-                    self._unique_matches_set.add(key)
-                    new_count += 1
-            self.total_matches_found += new_count
+            self.total_matches_found += len(match_entries)
 
             if self.fix:    
                 if new_filedata != filedata:
+
                     new_bytes = new_filedata.encode(original_encoding, errors="replace")
 
                     if new_bytes != original_bytes:
-                        with open(filename, "w", encoding=original_encoding) as fileobj:
+                        with open(filename, "w", encoding=original_encoding, newline='') as fileobj:
                             fileobj.write(new_filedata)
 
             print(f"--- Matches AFTER change in {rel_filename} ---")
             for entry in match_entries:
-                print(f"{entry['filename']}:{entry['line']}:_{entry["after"]}")
+                print(f"{entry['filename']}:{entry['line']}:_{entry['after'].rstrip()}")
             print()
 
             if self.fix:
-                update_search_json(self.matches_json_path, match_entries, repo_root_folder)
+                update_search_json(self.matches_json_path, match_entries, repo_root_folder, self.get_git_branch())
 
     def show_lines_grep_like(self, filename, filedata):
         rel_filename = self.get_git_root_relative(filename)
@@ -336,34 +342,28 @@ class GitSearchReplace(object):
         match_entries = []
 
         for expr in self.expressions:
-            lines_before = filedata.splitlines()
+            lines_before = filedata.splitlines(keepends=True)
             line_pos = []
             pos = 0
             for line in lines_before:
                 line_pos.append(pos)
-                pos += len(line) + 1
+                pos += len(line)
 
             matches = list(expr.fromexpr.finditer(filedata))
-            lines_after = new_filedata.splitlines()
+            
             for match in matches:
-                line_nr = bisect.bisect(line_pos, match.start())
+                line_nr = max(0, bisect.bisect_right(line_pos, match.start()) - 1)
+                old_line = lines_before[line_nr]
+                replaced_substr = match.group()
 
-                old_line = lines_before[line_nr - 1]
-                new_line = self.sub(expr, old_line, 'content')
-
-                replaced_substr = old_line[match.start() - line_pos[line_nr - 1] : match.end() - line_pos[line_nr - 1]]
-                replacement_substr = expr.toexpr
-
-                shown_lines.append(f"{rel_filename}:{line_nr}:{expr_id * '_'}{old_line}")
+                shown_lines.append(f"{rel_filename}:{line_nr + 1}:{expr_id * '_'}{old_line.rstrip()}")
 
                 match_entries.append({
                     "filename": rel_filename,
-                    "line": line_nr,
+                    "line": line_nr + 1,
                     "before": old_line,
-                    "after": new_line,
                     "changed_text": {
-                        "old": replaced_substr,
-                        "new": replacement_substr
+                        "old": replaced_substr
                     }
                 })
 
@@ -378,14 +378,9 @@ class GitSearchReplace(object):
             print()
 
             if match_entries:
-                new_count = 0
-                for entry in match_entries:
-                    key = json.dumps(entry, sort_keys=True)
-                    if key not in self._unique_matches_set:
-                        self._unique_matches_set.add(key)
-                        new_count += 1
-                self.total_matches_found += new_count
-                update_search_json(self.search_json_path, match_entries, repo_root_folder)
+                self.total_matches_found += len(match_entries)
+
+                update_search_json(self.search_json_path, match_entries, repo_root_folder, self.get_git_branch())
 
     def get_timestamped_filename(self, base_name):
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -407,14 +402,12 @@ def main():
             "usage: %prog [options] (FROM-SEPARATOR-TO...)\n"
             "       %prog [options] -p FROM1 TO1  FROM2 TO2 ...")
 
-    parser.add_option(
-        "-s", "--separator", dest="separator", default=None,
+    parser.add_option("-s", "--separator", dest="separator", default=None,
         help="The separator string the separates FROM and TO regexes. %s by default,"
             " if -p is not specified" % (DEFAULT_SEPARATOR, ),
         metavar="STRING")
 
-    parser.add_option(
-        "-p", "--pair-arguments",
+    parser.add_option("-p", "--pair-arguments",
         action="store_true", dest="pair_args", default=False,
         help="Use argument pairs for FROM and TO regexes. "
             "Useful with shell expansion. E.g: colo{,u}r")
@@ -443,15 +436,90 @@ def main():
         help="Include files matching the provided globbing "
              "pattern (can be specified more than once)")
 
-    parser.add_option("--no-renames",
+    parser.add_option("-n", "--no-renames",
         action="store_false", dest="renames", default=True,
         help="Don't perform renames")
+    
+    parser.add_option("-c", "--search-config",
+        dest="search_config",
+        metavar="PATH",
+        default="config/gsr-config.json",
+        help="Path to search config file (default: config/gsr-config.json)")
+
+    parser.add_option("-t", "--filetypes-config",
+        dest="filetypes_config",
+        metavar="PATH",
+        default="config/gsr-filetypes-config.json",
+        help="Path to filetypes config file (default: config/gsr-filetypes-config.json)")
+
 
     (options, args) = parser.parse_args()
+
     filters = getattr(options, 'filters', [])
+
+    if options.filetypes_config:
+        filetypes_path = options.filetypes_config
+        if not os.path.isfile(filetypes_path):
+            error(f"default filetypes config not found: {filetypes_path}")
+        with open(filetypes_path, "r", encoding="utf-8") as f:
+            try:
+                filetypes_data = json.load(f)
+                for entry in filetypes_data:
+                    pattern = entry.get("fileType")
+                    mode = entry.get("option", "include").lower()
+                    if pattern and mode in ("include", "exclude"):
+                        filters.append((mode, pattern))
+            except json.JSONDecodeError:
+                error(f"invalid JSON in filetypes config: {filetypes_path}")
+
     if len(filters) >= 1:
         if filters[0][0] == 'include':
             filters = [('exclude', '**')] + filters
+
+    # Conflict detection: same fileType with both include/exclude
+    conflict_check = {}
+    for mode, pattern in filters:
+        if pattern not in conflict_check:
+            conflict_check[pattern] = set()
+        conflict_check[pattern].add(mode)
+
+    for pattern, modes in conflict_check.items():
+        if "include" in modes and "exclude" in modes:
+            error(f"Conflicting include/exclude for pattern: {pattern}")
+
+    expressions = []
+    if options.search_config:
+        search_config_path = options.search_config
+        if not os.path.isfile(search_config_path):
+            error(f"search config file not found: {search_config_path}")
+
+        with open(search_config_path, "r", encoding="utf-8") as f:
+            config_data = json.load(f)  # ← This is where config_data is defined
+
+        for entry in config_data:
+            raw_old = re.escape(entry["OldString"])
+            new = entry["NewString"]
+            match_type = entry.get("Match", "").lower()
+
+            if match_type == "full":
+                old = f"^{raw_old}$"
+            elif match_type == "left":
+                old = f"^{raw_old}"
+            elif match_type == "right":
+                old = f"{raw_old}$"
+            else:
+                old = raw_old
+
+            expressions.extend([old, new])
+
+            sys.stderr.write(
+                f"\033[93mPreparing search-replace: '{entry['OldString']}' -> '{entry['NewString']}' (Match: {match_type})\033[0m\n"
+            )
+
+    # Force pair-args logic
+    options.pair_args = True
+    options.separator = None
+    sys.stderr.write("Warning: --pair-arguments (-p) and --separator (-s) are ignored because --search-config (-c) is used.\n")
 
     if options.pair_args:
         assert options.separator is None
@@ -465,7 +533,7 @@ def main():
         fix=options.fix,
         renames=options.renames,
         filters=filters,
-        expressions=args)
+        expressions=expressions)
     gsr.run()
 
 __all__ = ["main"]
