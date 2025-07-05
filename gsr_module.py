@@ -12,7 +12,6 @@ import fnmatch
 import json
 from datetime import datetime
 
-DEFAULT_SEPARATOR = '///'
 SEARCH_JSON_FILENAME = "search_matches.json"
 MATCHES_JSON_FILENAME = "matches.json"
 RESULTS_FOLDER_NAME = "search-results"
@@ -85,8 +84,7 @@ def titlecase_to_underscore(name):
 class GitSearchReplace(object):
     """Main class"""
 
-    def __init__(self, separator=None, fix=None, renames=None, filters=None, expressions=None):
-        self.separator = separator
+    def __init__(self, fix=None, renames=None, filters=None, expressions=None):
         self.fix = fix
         self.renames = renames
         self.filters = filters
@@ -143,12 +141,8 @@ class GitSearchReplace(object):
             return
 
         expressions = []
-        if self.separator is None:
-            if len(self.expressions_str) % 2 != 0:
-                error("FROM-TO expressions not paired")
-            pairs = list(zip(self.expressions_str[::2], self.expressions_str[1::2]))
-        else:
-            pairs = [expr.split(self.separator, 1) for expr in self.expressions_str]
+        pairs = list(zip(self.expressions_str[::2], self.expressions_str[1::2]))
+
         for fromexpr, toexpr in pairs:
             big_g = None
             if self.BIG_G_REGEX.search(toexpr):
@@ -188,8 +182,9 @@ class GitSearchReplace(object):
 
     def search_replace_in_files(self):
         self.total_matches_found = 0
+        git_root = self.get_git_root()
         filenames = str(run_subprocess(["git", "ls-files"]), 'utf-8').splitlines()
-        
+        print(f"\n=== Running gsr in repository: '{git_root}' ===\n")
         filtered_filenames = []
         for filename in filenames:
             matching_filters = [
@@ -219,11 +214,9 @@ class GitSearchReplace(object):
 
 
             if self.fix:
-                print(f"\n=== Beginning search and replace in repository ===\n")
                 self.show_file(filename, filedata, original_bytes, original_encoding)
             else:
-                print(f"\n=== Beginning search in repository ===\n")
-                self.show_lines_grep_like(filename, filedata)
+                self.show_lines_grep_like(filename, filedata, git_root)
 
         print(f"=== Finished ===")
         print(f"\n=== Total matches found across all files: {self.total_matches_found} ===\n")
@@ -268,9 +261,8 @@ class GitSearchReplace(object):
         for line in matches_lines:
             print(line)
 
-    def show_file(self, filename, filedata, original_bytes, original_encoding):
+    def show_file(self, filename, filedata, original_bytes, original_encoding, git_root):
         rel_filename = self.get_git_root_relative(filename)
-        git_root = self.get_git_root()
         repo_root_folder = os.path.basename(git_root)
 
         new_filedata = filedata
@@ -330,9 +322,8 @@ class GitSearchReplace(object):
             if self.fix:
                 update_search_json(self.matches_json_path, match_entries, repo_root_folder, self.get_git_branch())
 
-    def show_lines_grep_like(self, filename, filedata):
+    def show_lines_grep_like(self, filename, filedata, git_root):
         rel_filename = self.get_git_root_relative(filename)
-        git_root = self.get_git_root()
         repo_root_folder = os.path.basename(git_root)
 
         new_filedata = filedata
@@ -409,16 +400,6 @@ def main():
             "usage: %prog [options] (FROM-SEPARATOR-TO...)\n"
             "       %prog [options] -p FROM1 TO1  FROM2 TO2 ...")
 
-    parser.add_option("-s", "--separator", dest="separator", default=None,
-        help="The separator string the separates FROM and TO regexes. %s by default,"
-            " if -p is not specified" % (DEFAULT_SEPARATOR, ),
-        metavar="STRING")
-
-    parser.add_option("-p", "--pair-arguments",
-        action="store_true", dest="pair_args", default=False,
-        help="Use argument pairs for FROM and TO regexes. "
-            "Useful with shell expansion. E.g: colo{,u}r")
-
     parser.add_option("-f", "--fix",
         action="store_true", dest="fix", default=False,
         help="Perform changes in-place")
@@ -454,7 +435,6 @@ def main():
         metavar="PATH",
         default=default_filetypes_config,
         help="Path to filetypes config file (default: ./config/gsr-filetypes-config.json)")
-
 
     (options, args) = parser.parse_args()
 
@@ -521,19 +501,7 @@ def main():
             f"\033[93mPreparing search-replace: '{entry['OldString']}' -> '{entry['NewString']}' (Match: {match_type})\033[0m\n"
         )
 
-    # Force pair-args logic
-    options.pair_args = True
-    options.separator = None
-    sys.stderr.write("Warning: --pair-arguments (-p) and --separator (-s) are ignored because --search-config (-c) is used.\n")
-
-    if options.pair_args:
-        assert options.separator is None
-        sep = None
-    else:
-        sep = options.separator or DEFAULT_SEPARATOR
-
     gsr = GitSearchReplace(
-        separator=sep,
         fix=options.fix,
         renames=options.renames,
         filters=filters,
