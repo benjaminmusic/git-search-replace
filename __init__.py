@@ -395,6 +395,14 @@ def add_filter(option, opt_str, value, parser, mode):
         parser.values.filters = []
     parser.values.filters.append((mode, value))
 
+def get_script_dir():
+    if getattr(sys, 'frozen', False):
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.abspath(__file__))
+
+default_search_config = os.path.join(get_script_dir(), "config", "gsr-config.json")
+default_filetypes_config = os.path.join(get_script_dir(), "config", "gsr-filetypes-config.json")
+
 def main():
     """Main function"""
     parser = OptionParser(usage=
@@ -438,33 +446,35 @@ def main():
     parser.add_option("-c", "--search-config",
         dest="search_config",
         metavar="PATH",
-        default="config/gsr-config.json",
-        help="Path to search config file (default: config/gsr-config.json)")
+        default=default_search_config,
+        help="Path to search config file (default: ./config/gsr-config.json)")
 
     parser.add_option("-t", "--filetypes-config",
         dest="filetypes_config",
         metavar="PATH",
-        default="config/gsr-filetypes-config.json",
-        help="Path to filetypes config file (default: config/gsr-filetypes-config.json)")
+        default=default_filetypes_config,
+        help="Path to filetypes config file (default: ./config/gsr-filetypes-config.json)")
+
 
     (options, args) = parser.parse_args()
 
     filters = getattr(options, 'filters', [])
 
-    if options.filetypes_config:
-        filetypes_path = options.filetypes_config
-        if not os.path.isfile(filetypes_path):
-            error(f"default filetypes config not found: {filetypes_path}")
-        with open(filetypes_path, "r", encoding="utf-8") as f:
-            try:
-                filetypes_data = json.load(f)
-                for entry in filetypes_data:
-                    pattern = entry.get("fileType")
-                    mode = entry.get("option", "include").lower()
-                    if pattern and mode in ("include", "exclude"):
-                        filters.append((mode, pattern))
-            except json.JSONDecodeError:
-                error(f"invalid JSON in filetypes config: {filetypes_path}")
+    # Validate filetypes config
+    filetypes_path = options.filetypes_config
+    if not os.path.isfile(filetypes_path):
+        error(f"filetypes config file not found: {filetypes_path}")
+        
+    with open(filetypes_path, "r", encoding="utf-8") as f:
+        try:
+            filetypes_data = json.load(f)
+            for entry in filetypes_data:
+                pattern = entry.get("fileType")
+                mode = entry.get("option", "include").lower()
+                if pattern and mode in ("include", "exclude"):
+                    filters.append((mode, pattern))
+        except json.JSONDecodeError:
+            error(f"invalid JSON in filetypes config: {filetypes_path}")
 
     if len(filters) >= 1:
         if filters[0][0] == 'include':
@@ -482,33 +492,34 @@ def main():
             error(f"Conflicting include/exclude for pattern: {pattern}")
 
     expressions = []
-    if options.search_config:
-        search_config_path = options.search_config
-        if not os.path.isfile(search_config_path):
-            error(f"search config file not found: {search_config_path}")
+    
+    # Validate search config
+    search_config_path = options.search_config
+    if not os.path.isfile(search_config_path):
+        error(f"search config file not found: {search_config_path}")
 
-        with open(search_config_path, "r", encoding="utf-8") as f:
-            config_data = json.load(f)  # ← This is where config_data is defined
+    with open(search_config_path, "r", encoding="utf-8") as f:
+        config_data = json.load(f)  # ← This is where config_data is defined
 
-        for entry in config_data:
-            raw_old = re.escape(entry["OldString"])
-            new = entry["NewString"]
-            match_type = entry.get("Match", "").lower()
+    for entry in config_data:
+        raw_old = re.escape(entry["OldString"])
+        new = entry["NewString"]
+        match_type = entry.get("Match", "").lower()
 
-            if match_type == "full":
-                old = f"^{raw_old}$"
-            elif match_type == "left":
-                old = f"^{raw_old}"
-            elif match_type == "right":
-                old = f"{raw_old}$"
-            else:
-                old = raw_old
+        if match_type == "full":
+            old = f"^{raw_old}$"
+        elif match_type == "left":
+            old = f"^{raw_old}"
+        elif match_type == "right":
+            old = f"{raw_old}$"
+        else:
+            old = raw_old
 
-            expressions.extend([old, new])
+        expressions.extend([old, new])
 
-            sys.stderr.write(
-                f"\033[93mPreparing search-replace: '{entry['OldString']}' -> '{entry['NewString']}' (Match: {match_type})\033[0m\n"
-            )
+        sys.stderr.write(
+            f"\033[93mPreparing search-replace: '{entry['OldString']}' -> '{entry['NewString']}' (Match: {match_type})\033[0m\n"
+        )
 
     # Force pair-args logic
     options.pair_args = True
