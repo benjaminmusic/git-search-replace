@@ -85,9 +85,8 @@ def titlecase_to_underscore(name):
 class GitSearchReplace(object):
     """Main class"""
 
-    def __init__(self, separator=None, diff=None, fix=None, renames=None, filters=None, expressions=None):
+    def __init__(self, separator=None, fix=None, renames=None, filters=None, expressions=None):
         self.separator = separator
-        self.diff = diff
         self.fix = fix
         self.renames = renames
         self.filters = filters
@@ -190,19 +189,19 @@ class GitSearchReplace(object):
     def search_replace_in_files(self):
         self.total_matches_found = 0
         filenames = str(run_subprocess(["git", "ls-files"]), 'utf-8').splitlines()
+        
         filtered_filenames = []
         for filename in filenames:
-            excluded = False
-            for (mode, pattern) in self.filters:
-                if fnmatch.fnmatch(filename, pattern):
-                    if mode == 'exclude':
-                        excluded = True
-                    elif mode == 'include':
-                        excluded = False
-            if excluded:
-                continue
+            matching_filters = [
+                (mode, pattern) for (mode, pattern) in self.filters
+                if fnmatch.fnmatch(filename, pattern)
+            ]
+            if matching_filters:
+                # Pick the most specific (longest pattern)
+                mode, _ = max(matching_filters, key=lambda x: len(x[1]))
+                if mode == 'exclude':
+                    continue
             filtered_filenames.append(filename)
-
 
         for filename in filtered_filenames:
             if not os.path.isfile(filename):
@@ -219,7 +218,7 @@ class GitSearchReplace(object):
                 original_encoding = "latin-1"
 
 
-            if self.diff or self.fix:
+            if self.fix:
                 print(f"\n=== Beginning search and replace in repository ===\n")
                 self.show_file(filename, filedata, original_bytes, original_encoding)
             else:
@@ -416,10 +415,6 @@ def main():
         action="store_true", dest="fix", default=False,
         help="Perform changes in-place")
 
-    parser.add_option("-d", "--diff",
-        action="store_true", dest="diff", default=False,
-        help="Use 'diff' util to show differences")
-
     parser.add_option("-e", "--exclude",
         action="callback", callback=add_filter,
         callback_args=('exclude', ),
@@ -528,7 +523,6 @@ def main():
 
     gsr = GitSearchReplace(
         separator=sep,
-        diff=options.diff,
         fix=options.fix,
         renames=options.renames,
         filters=filters,
