@@ -1,87 +1,136 @@
-# Git Search and Replace Tool
+# Git Search and Replace (GSR)
 
-This project provides a Python-based tool to perform regex-based search and replace operations across files in a Git repository. It supports file filtering, in-place edits, JSON logging of changes, and complex dynamic substitutions using embedded Python expressions.
+A Python-based tool for search-and-replace operations across Git repositories, with support for regular expressions, structured logging, file filtering, and Azure DevOps compatibility. This version is optimized for use in pipelines and `.exe` packaging.
 
-## Features
+## 🔧 Features
 
-- Search and replace using regular expressions
-- In-place file modification (`--fix`)
-- Preview changes using diff-style output (`--diff`)
-- Include/exclude file types
-- Rename matching filenames
-- Timestamped JSON logs of matches and changes
-- Compatible with Azure DevOps pipelines and LFS-aware workflows
+- Regular expression-based search and replace
+- File and filename replacements (optional)
+- Filter files by include/exclude patterns (glob)
+- Config-driven match types: `full`, `left`, `right`, `none`
+- UTF-8 and Latin-1 decoding support
+- Timestamped JSON logs for matches and replacements
+- Works with Git LFS and Azure DevOps repositories
+- Compatible with PyInstaller `.exe` builds
 
-## File Structure
+## 📁 Project Structure
 
-- `main.py` – Entry point that runs the `main()` function from the module
-- `__init__.py` – Core logic including search/replace, argument parsing, and result logging
-- `gsr-config.json` – Sample configuration for expressions (OldString/NewString pairs)
-- `gsr-valid-filetypes.json` – File patterns to include in the search
-- `template-gsr-config.json` – Example template for expressions
-- `template-gsr-valid-filetypes.json` – Template for valid file extensions
+| File | Description |
+|------|-------------|
+| `gsr_main.py` | Minimal entry point that runs the main logic |
+| `gsr_module.py` | Full implementation of the search-replace engine |
+| `gsr-config.json` | Search expressions (OldString, NewString, Match) |
+| `gsr-filetypes-config.json` | File glob patterns to include/exclude |
+| `template-gsr-config.json` | Sample template for expressions |
+| `template-gsr-filetypes-config.json` | Sample file filtering template |
+| `build_gsr.bat` / `build_gsr.sh` | Scripts to compile the `.exe` |
 
-## Usage
+## 🚀 Usage
+
+The tool requires two JSON config files:
+
+- `gsr-config.json`: List of expressions with optional match modes
+- `gsr-filetypes-config.json`: Include/exclude rules for file types
+
+### Example Command
 
 ```bash
-python main.py --fix -i "*.cs" -i "*.json" "pattern1///replacement1" "pattern2///replacement2"
+# Run on current repo with in-place fixes using default configs
+python gsr_main.py --fix
 ```
 
-Or use pair format:
+### PyInstaller Executable
+
+Build with:
 
 ```bash
-python main.py -p "pattern1" "replacement1" "pattern2" "replacement2"
+pyinstaller --onefile --name gsr gsr_main.py
 ```
 
-### Flags
+Then use:
 
-- `-f`, `--fix` – Modify files in place
-- `-d`, `--diff` – Show before/after differences without writing to disk
-- `-i`, `--include PATTERN` – Include only matching files
-- `-e`, `--exclude PATTERN` – Exclude matching files
-- `-s`, `--separator STRING` – Separator string for expressions (default: `///`)
-- `-p`, `--pair-arguments` – Use expression pairs (FROM, TO) instead of a separator
-- `--no-renames` – Skip renaming files that match replacement rules
+```bash
+./gsr.exe --fix
+```
 
-## Output
+## 🔤 Match Modes
 
-- Search and match details are saved in `search-results/` with timestamped filenames:
-  - `search_matches-YYYYMMDD-HHMMSS.json`
-  - `matches-YYYYMMDD-HHMMSS.json`
+| Match | Description |
+|-------|-------------|
+| `full` | Matches the entire string |
+| `left` | Must match start of string |
+| `right` | Must match end of string |
+| `none` (default) | Matches any occurrence |
 
-## Example Configs
+## ⚙️ Sample Configs
 
 ### `gsr-config.json`
 
 ```json
 [
   {
-    "OldString": "Old1",
-    "NewString": "New1",
+    "OldString": "/OldPath/",
+    "NewString": "/NewPath/",
     "Match": "none"
+  },
+  {
+    "OldString": "FOO",
+    "NewString": "BAR",
+    "Match": "left"
   }
 ]
 ```
 
-### `gsr-valid-filetypes.json`
+### `gsr-filetypes-config.json`
 
 ```json
 [
-  { "fileType": "*.json" },
-  { "fileType": "*.cs" }
+  { "fileType": "*.json", "option": "include" },
+  { "fileType": "*.cs", "option": "include" },
+  { "fileType": "*.yml", "option": "include" }
 ]
 ```
 
-## Requirements
+> Longest or most specific match wins if multiple patterns apply.
+
+## 🧾 Output
+
+Search logs and matches are saved to:
+
+```
+search-results/
+├── search_matches-YYYYMMDD-HHMMSS.json  # Preview mode
+└── matches-YYYYMMDD-HHMMSS.json         # After --fix
+```
+
+## 🛠 Build Instructions
+
+### Windows
+
+```bat
+@echo off
+REM Build standalone gsr.exe from gsr_main.py
+pyinstaller --onefile --name gsr gsr_main.py
+```
+
+### Unix/macOS
+
+```sh
+#!/bin/bash
+# Build standalone gsr executable
+pyinstaller --onefile --name gsr gsr_main.py
+```
+
+## 📦 Requirements
 
 - Python 3.6+
 - Git CLI
+- PyInstaller (for `.exe` builds): `pip install pyinstaller`
 
-## License
+## 📄 License
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+MIT License — see `LICENSE` for details.
 
-## Credits
+## 🙏 Credits
 
-This project is based on [`git-search-replace`](https://github.com/da-x/git-search-replace) by [da-x](https://github.com/da-x). Significant modifications and enhancements were made for custom use cases.
-
+Based on [`git-search-replace`](https://github.com/da-x/git-search-replace) by [da-x](https://github.com/da-x), customized and enhanced for Azure DevOps and pipeline integration.
