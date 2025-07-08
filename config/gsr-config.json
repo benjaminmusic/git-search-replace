@@ -1,6 +1,6 @@
 [
   {
-    "OldString": "Old1",
+    "OldString": "*.json",
     "NewString": "New1",
     "Match": "none"
   }
